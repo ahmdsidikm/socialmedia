@@ -52,7 +52,8 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
     try {
       final response = await _supabase
           .from('posts')
-          .select('id, content, created_at, username, likes, views')
+          .select(
+              'id, content, created_at, username, likes, views, image_url') // Ambil image_url
           .eq('id', postId)
           .single();
       return response;
@@ -66,7 +67,8 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
     try {
       final response = await _supabase
           .from('comments')
-          .select('id, content, created_at, username')
+          .select(
+              'id, content, created_at, username') // Ambil username dari komentar
           .eq('post_id', postId)
           .order('created_at');
       return response;
@@ -76,15 +78,22 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
     }
   }
 
+  Future<String> _getCurrentUsername() async {
+    final user = Supabase.instance.client.auth.currentUser;
+    return user?.email ?? 'Anonymous';
+  }
+
   Future<void> _addComment(int postId) async {
     final content = _commentControllers[postId]?.text.trim() ?? '';
-    final defaultUsername = "Anonymous";
 
     if (content.isNotEmpty && content.length <= 200) {
       try {
+        final username =
+            await _getCurrentUsername(); // Ambil username dari Supabase Auth
+
         await _supabase.from('comments').insert({
           'post_id': postId,
-          'username': defaultUsername,
+          'username': username, // Gunakan username yang diperoleh
           'content': content,
         });
 
@@ -137,209 +146,292 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
       appBar: AppBar(
         title: const Text('Detail Postingan'),
       ),
-      body: Column(
+      body: Stack(
         children: [
-          Expanded(
-            child: RefreshIndicator(
-              onRefresh: _onRefresh,
-              child: SingleChildScrollView(
-                padding: const EdgeInsets.all(16.0),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    FutureBuilder<Map<String, dynamic>>(
-                      future: _postFuture,
-                      builder: (context, snapshot) {
-                        if (snapshot.connectionState ==
-                            ConnectionState.waiting) {
-                          return Center(child: CircularProgressIndicator());
-                        } else if (snapshot.hasError || !snapshot.hasData) {
-                          return Center(
-                              child: Text(
-                                  'Error loading post: ${snapshot.error}'));
-                        }
+          Column(
+            children: [
+              Expanded(
+                child: RefreshIndicator(
+                  onRefresh: _onRefresh,
+                  child: SingleChildScrollView(
+                    padding: const EdgeInsets.all(16.0),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        FutureBuilder<Map<String, dynamic>>(
+                          future: _postFuture,
+                          builder: (context, snapshot) {
+                            if (snapshot.connectionState ==
+                                ConnectionState.waiting) {
+                              return Center(child: CircularProgressIndicator());
+                            } else if (snapshot.hasError || !snapshot.hasData) {
+                              return Center(
+                                  child: Text(
+                                      'Error loading post: ${snapshot.error}'));
+                            }
 
-                        final post = snapshot.data!;
-                        final postDate = DateTime.parse(post['created_at']);
-                        final postTimeAgo =
-                            timeago.format(postDate, locale: 'id');
-                        final views = post['views'] as int;
+                            final post = snapshot.data!;
+                            final postDate = DateTime.parse(post['created_at']);
+                            final postTimeAgo =
+                                timeago.format(postDate, locale: 'id');
+                            final views = post['views'] as int;
+                            final imageUrl = post['image_url']
+                                as String?; // Ambil image_url dari data post
 
-                        return Column(
-                          crossAxisAlignment: CrossAxisAlignment.stretch,
-                          children: [
-                            Container(
-                              decoration: BoxDecoration(
-                                color: Colors.white,
-                                border:
-                                    Border.all(color: Colors.blue, width: 1.0),
-                                borderRadius: BorderRadius.circular(8.0),
-                              ),
-                              padding: const EdgeInsets.all(16.0),
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    post['content'],
-                                    style: TextStyle(
-                                      fontSize: 16,
-                                      color: Colors.black,
-                                    ),
+                            return Column(
+                              crossAxisAlignment: CrossAxisAlignment.stretch,
+                              children: [
+                                Container(
+                                  decoration: BoxDecoration(
+                                    color: Colors.black12,
+                                    border: Border.all(
+                                        color: Colors.blue, width: 1.0),
+                                    borderRadius: BorderRadius.circular(8.0),
                                   ),
-                                  SizedBox(height: 8),
-                                  Text(
-                                    'by ${post['username']} ${postTimeAgo}',
-                                    style: TextStyle(
-                                      fontSize: 12,
-                                      color: Colors.grey[600],
-                                    ),
-                                  ),
-                                  SizedBox(height: 8),
-                                  Divider(color: Colors.blue, thickness: 1.0),
-                                  SizedBox(height: 8),
-                                  Row(
+                                  padding: const EdgeInsets.all(16.0),
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
                                     children: [
-                                      Icon(Icons.remove_red_eye,
-                                          color: Colors.grey[600]),
-                                      SizedBox(width: 4),
                                       Text(
-                                        '$views views',
+                                        post['username'] ??
+                                            'Anonymous', // Pindahkan username ke atas postingan
                                         style: TextStyle(
                                           fontSize: 14,
+                                          color: const Color.fromARGB(
+                                              255, 0, 0, 0),
+                                          fontWeight: FontWeight.bold,
+                                        ),
+                                      ),
+                                      SizedBox(height: 8),
+                                      if (imageUrl != null &&
+                                          imageUrl
+                                              .isNotEmpty) // Tampilkan gambar jika ada
+                                        Padding(
+                                          padding: const EdgeInsets.only(
+                                              bottom: 8.0),
+                                          child: Image.network(
+                                            imageUrl,
+                                            height: 200,
+                                            width: double.infinity,
+                                            fit: BoxFit.cover,
+                                            loadingBuilder: (context, child,
+                                                loadingProgress) {
+                                              if (loadingProgress == null) {
+                                                return child;
+                                              } else {
+                                                return Center(
+                                                  child:
+                                                      CircularProgressIndicator(
+                                                    value: loadingProgress
+                                                                .expectedTotalBytes !=
+                                                            null
+                                                        ? loadingProgress
+                                                                .cumulativeBytesLoaded /
+                                                            (loadingProgress
+                                                                    .expectedTotalBytes ??
+                                                                1)
+                                                        : null,
+                                                  ),
+                                                );
+                                              }
+                                            },
+                                            errorBuilder:
+                                                (context, error, stackTrace) {
+                                              return Center(
+                                                child: Icon(
+                                                  Icons.error,
+                                                  color: Colors.red,
+                                                  size: 50,
+                                                ),
+                                              );
+                                            },
+                                          ),
+                                        ),
+                                      Text(
+                                        post['content'],
+                                        style: TextStyle(
+                                          fontSize: 16,
+                                          color: Colors.black,
+                                        ),
+                                      ),
+                                      SizedBox(height: 8),
+                                      Text(
+                                        'Diposting ${postTimeAgo}',
+                                        style: TextStyle(
+                                          fontSize: 12,
                                           color: Colors.grey[600],
                                         ),
                                       ),
-                                    ],
-                                  ),
-                                ],
-                              ),
-                            ),
-                            SizedBox(height: 16),
-                            Divider(color: Colors.grey[300], thickness: 1),
-                            SizedBox(height: 16),
-                            Text(
-                              'Komentar:',
-                              style: TextStyle(
-                                fontSize: 18,
-                                fontWeight: FontWeight.bold,
-                                color: Colors.black,
-                              ),
-                            ),
-                            SizedBox(height: 16),
-                            FutureBuilder<List<Map<String, dynamic>>>(
-                              future: _commentsFuture,
-                              builder: (context, snapshot) {
-                                if (snapshot.connectionState ==
-                                    ConnectionState.waiting) {
-                                  return Center(
-                                      child: CircularProgressIndicator());
-                                } else if (snapshot.hasError) {
-                                  return Center(
-                                      child: Text(
-                                          'Error loading comments: ${snapshot.error}'));
-                                } else if (!snapshot.hasData ||
-                                    snapshot.data!.isEmpty) {
-                                  return Center(
-                                      child: Text('Tidak ada komentar'));
-                                }
-
-                                final comments = snapshot.data!;
-
-                                return ListView.builder(
-                                  shrinkWrap: true,
-                                  physics: NeverScrollableScrollPhysics(),
-                                  itemCount: comments.length,
-                                  itemBuilder: (context, index) {
-                                    final comment = comments[index];
-                                    final commentDate =
-                                        DateTime.parse(comment['created_at']);
-                                    final commentTimeAgo = timeago
-                                        .format(commentDate, locale: 'id');
-
-                                    return Container(
-                                      decoration: BoxDecoration(
-                                        color: Colors.white,
-                                        border: Border.all(
-                                            color: Colors.blue, width: 1.0),
-                                        borderRadius:
-                                            BorderRadius.circular(8.0),
-                                      ),
-                                      padding: const EdgeInsets.all(12.0),
-                                      margin:
-                                          const EdgeInsets.only(bottom: 8.0),
-                                      child: Column(
-                                        crossAxisAlignment:
-                                            CrossAxisAlignment.start,
+                                      SizedBox(height: 8),
+                                      Divider(
+                                          color: const Color.fromARGB(
+                                              255, 24, 24, 24),
+                                          thickness: 1.0),
+                                      SizedBox(height: 8),
+                                      Row(
                                         children: [
+                                          Icon(Icons.remove_red_eye,
+                                              color: Colors.grey[600]),
+                                          SizedBox(width: 4),
                                           Text(
-                                            comment['content'],
+                                            '$views views',
                                             style: TextStyle(
                                               fontSize: 14,
-                                              color: Colors.black,
-                                            ),
-                                          ),
-                                          SizedBox(height: 8),
-                                          Text(
-                                            'oleh ${comment['username']} ${commentTimeAgo}',
-                                            style: TextStyle(
-                                              fontSize: 12,
                                               color: Colors.grey[600],
                                             ),
                                           ),
                                         ],
                                       ),
+                                    ],
+                                  ),
+                                ),
+                                SizedBox(height: 16),
+                                Divider(
+                                    color: const Color.fromARGB(255, 0, 0, 0),
+                                    thickness: 1),
+                                SizedBox(height: 16),
+                                Text(
+                                  'Komentar:',
+                                  style: TextStyle(
+                                    fontSize: 18,
+                                    fontWeight: FontWeight.bold,
+                                    color: Colors.black,
+                                  ),
+                                ),
+                                SizedBox(height: 16),
+                                FutureBuilder<List<Map<String, dynamic>>>(
+                                  future: _commentsFuture,
+                                  builder: (context, snapshot) {
+                                    if (snapshot.connectionState ==
+                                        ConnectionState.waiting) {
+                                      return Center(
+                                          child: CircularProgressIndicator());
+                                    } else if (snapshot.hasError) {
+                                      return Center(
+                                          child: Text(
+                                              'Error loading comments: ${snapshot.error}'));
+                                    } else if (!snapshot.hasData ||
+                                        snapshot.data!.isEmpty) {
+                                      return Center(
+                                          child: Text('Tidak ada komentar'));
+                                    }
+
+                                    final comments = snapshot.data!;
+
+                                    return ListView.builder(
+                                      shrinkWrap: true,
+                                      physics: NeverScrollableScrollPhysics(),
+                                      itemCount: comments.length,
+                                      itemBuilder: (context, index) {
+                                        final comment = comments[index];
+                                        final commentDate = DateTime.parse(
+                                            comment['created_at']);
+                                        final commentTimeAgo = timeago
+                                            .format(commentDate, locale: 'id');
+
+                                        return Container(
+                                          decoration: BoxDecoration(
+                                            color: Colors.white,
+                                            border: Border.all(
+                                                color: Colors.grey, width: 1.0),
+                                            borderRadius:
+                                                BorderRadius.circular(8.0),
+                                          ),
+                                          padding: const EdgeInsets.all(12.0),
+                                          margin: const EdgeInsets.only(
+                                              bottom: 8.0),
+                                          child: Column(
+                                            crossAxisAlignment:
+                                                CrossAxisAlignment.start,
+                                            children: [
+                                              Text(
+                                                comment['username'] ??
+                                                    'Anonymous', // Tambahkan username ke komentar
+                                                style: TextStyle(
+                                                  fontSize: 14,
+                                                  color: const Color.fromARGB(
+                                                      255, 0, 0, 0),
+                                                  fontWeight: FontWeight.bold,
+                                                ),
+                                              ),
+                                              SizedBox(height: 8),
+                                              Text(
+                                                comment['content'],
+                                                style: TextStyle(
+                                                  fontSize: 14,
+                                                  color: Colors.black,
+                                                ),
+                                              ),
+                                              SizedBox(height: 8),
+                                              Text(
+                                                'oleh ${commentTimeAgo}',
+                                                style: TextStyle(
+                                                  fontSize: 12,
+                                                  color: Colors.grey[600],
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                        );
+                                      },
                                     );
                                   },
-                                );
-                              },
-                            ),
-                          ],
-                        );
-                      },
+                                ),
+                              ],
+                            );
+                          },
+                        ),
+                      ],
                     ),
-                  ],
+                  ),
                 ),
               ),
-            ),
+            ],
           ),
-          Padding(
-            padding: const EdgeInsets.all(16.0),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Container(
-                  constraints: BoxConstraints(maxHeight: 150),
-                  child: TextField(
-                    controller: _commentControllers[widget.postId],
-                    decoration: InputDecoration(
-                      hintText: 'Tulis Komentar',
-                      filled: true,
-                      fillColor: Colors.grey[200],
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(30),
-                        borderSide: BorderSide.none,
+          Positioned(
+            bottom: 0,
+            left: 0,
+            right: 0,
+            child: Padding(
+              padding: const EdgeInsets.all(16.0),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Container(
+                    constraints: BoxConstraints(maxHeight: 150),
+                    child: TextField(
+                      controller: _commentControllers[widget.postId],
+                      decoration: InputDecoration(
+                        hintText: 'Tulis Komentar',
+                        filled: true,
+                        fillColor: Colors.grey[200],
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(30),
+                          borderSide: BorderSide.none,
+                        ),
+                        contentPadding: const EdgeInsets.symmetric(
+                            horizontal: 16, vertical: 12),
                       ),
-                      contentPadding: const EdgeInsets.symmetric(
-                          horizontal: 16, vertical: 12),
-                    ),
-                    keyboardType: TextInputType.multiline,
-                    maxLines: null,
-                    textInputAction: TextInputAction.newline,
-                  ),
-                ),
-                SizedBox(height: 8),
-                ElevatedButton(
-                  onPressed: () => _addComment(widget.postId),
-                  child: const Text('Kirim Komentar'),
-                  style: ElevatedButton.styleFrom(
-                    foregroundColor: Color.fromARGB(255, 255, 255, 255),
-                    backgroundColor: Colors.blue,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(30),
+                      keyboardType: TextInputType.multiline,
+                      maxLines: null,
+                      textInputAction: TextInputAction.newline,
                     ),
                   ),
-                ),
-              ],
+                  SizedBox(height: 8),
+                  ElevatedButton(
+                    onPressed: () => _addComment(widget.postId),
+                    child: const Text('Kirim Komentar'),
+                    style: ElevatedButton.styleFrom(
+                      foregroundColor: Color.fromARGB(255, 255, 255, 255),
+                      backgroundColor: Colors.blue,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(30),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
             ),
           ),
         ],
